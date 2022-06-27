@@ -1,5 +1,4 @@
-# SDSC
-Structure Aware Deep Spectral Embedding
+# SDSC: Structure Aware Deep Spectral Embedding
 
 
 1. pip  install munkres
