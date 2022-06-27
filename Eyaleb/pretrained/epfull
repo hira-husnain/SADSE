@@ -1,0 +1,163 @@
+import numpy as np
+import glob
+import tensorflow.compat.v1 as tf
+from sklearn.metrics.pairwise import euclidean_distances
+from scipy import linalg
+import sklearn
+from sklearn.cluster import KMeans
+from tensorflow.keras import backend as B
+from tensorflow.keras.layers import Input,Dense,Lambda,Layer
+from tensorflow.keras.models import Model
+from sklearn.metrics import confusion_matrix
+from munkres import Munkres
+k_cluster = 38
+batchSize=486
+
+x_train=np.load('../../datasets/eyaleb/deyalebfromsenet.npy')
+x_train=x_train.reshape(len(x_train),784)
+y=np.load('../.././datasets/eyaleb/leyalebfromsenet.npy')
+y=y.reshape(len(y),)
+alpha_trans1=np.load('../.././datasets/eyaleb/cknneyalebfromsenet.npy',allow_pickle=True)
+alpha_trans1=np.asarray(alpha_trans1).astype('float32') 
+def eig_vec(x_train):
+    nev_trans=[]
+    SortedEigVec=np.zeros((batchSize,batchSize))
+    for l in range (0,len(x_train),batchSize):
+        xtr=x_train[l:l+batchSize]
+        d=(euclidean_distances(xtr,xtr))
+        W=np.zeros((len(xtr),len(xtr)))
+        for i in range(len(xtr)):
+            for j in range (len(xtr)):
+                if i==j:
+                    W[i,j]=0
+                else:
+                    W[i,j]=np.exp(-(d[i,j]**2)/(2*0.09))
+        degree=np.diag(sum(W))
+        L = degree-W
+        eig_val,eig_vec=np.linalg.eig(L)
+        dec_eigVal=np.flip(np.sort(eig_val))
+        indexArr=(np.flip(np.argsort(eig_val)))
+        for i in range (len(indexArr)):
+            SortedEigVec[:,i]=eig_vec[:,indexArr[i]]
+        SortedEigVec=np.array(SortedEigVec)
+        nev_trans.append(SortedEigVec)
+    return nev_trans,L,eig_val,eig_vec,dec_eigVal,W
+
+def make_cost_matrix(c1, c2):
+    uc1 = np.unique(c1)
+    uc2 = np.unique(c2)
+    l1 = uc1.size
+    l2 = uc2.size
+    for a in range (1):
+        if uc1.shape==uc2.shape:
+            m = np.ones([l1, l2])
+            for i in range(l1):
+                it_i = np.nonzero(c1 == uc1[i])[0]
+                for j in range(l2):
+                    it_j = np.nonzero(c2 == uc2[j])[0]
+                    m_ij = np.intersect1d(it_j, it_i)
+                    m[i,j] =  -m_ij.size
+        else:
+            print('assertion handeled')
+            return
+        #break
+    return m
+
+
+def translate_clustering(clt, mapper):
+    return np.array([ mapper[i] for i in clt ])
+
+def accuracy(cm):
+    return np.trace(cm, dtype=float) / np.sum(cm)
+
+def rectify_label(labels, classes):
+    num_labels = len(np.unique(classes))
+    cm = confusion_matrix(classes, labels, labels=range(num_labels)) # gets the confusion matrix
+    cost_matrix = make_cost_matrix(labels, classes)
+    if cost_matrix is None:
+        return (None,None)
+    else:
+        m = Munkres()
+        indexes = m.compute(cost_matrix)
+        mapper = { old: new for (old, new) in indexes }
+        new_labels = translate_clustering(labels, mapper)
+        new_cm = confusion_matrix(classes, new_labels, labels=range(num_labels))
+        return new_labels,accuracy(new_cm)
+
+def arch():
+    encoding_dim = 484 
+    input_img = Input(shape=(784,))
+    encoded_layer_2 = Dense(700, activation='tanh')(input_img)
+    encoded_layer_3 = Dense(600, activation='tanh')(encoded_layer_2)
+    encoded_layer_4 = Dense(500, activation='tanh')(encoded_layer_3)
+    encoded = Dense(encoding_dim, activation='tanh')(encoded_layer_4)
+    decoded_layer_2 = Dense(500, activation='tanh')(encoded)
+    decoded_layer_3 = Dense(600, activation='tanh')(decoded_layer_2)
+    decoded_layer_4 = Dense(700, activation='tanh')(decoded_layer_3)
+    decoded = Dense(784, activation='tanh')(decoded_layer_4)
+    encoder=Model(input_img,encoded)
+    autoencoder=Model(input_img,decoded)
+    return encoder,encoding_dim,autoencoder
+  
+def assign_func(z_test,z_ic):
+    dst = np.array(np.sum(((z_test-z_ic[0]) **2),axis=1))
+    for index in range(1, z_ic.shape[0]):
+        col = np.sum(((z_test- z_ic[index])**2), axis=1)
+        dst = np.vstack((dst, col))
+    dst = dst.T      
+    mean_dst = np.mean(dst, axis=1)
+    q = np.maximum(0.0, np.tile(mean_dst, (dst.shape[1], 1)).T - dst)
+    num_centers = q.shape[1]
+    weight = 1.0 / (q.sum(axis=0) + 1e-9)
+    weight *= num_centers / weight.sum()
+    q = (q ** 2.0) * weight
+    q = (q.T / (q.sum(axis=1) + B.epsilon())).T
+    return q
+
+def asl():
+    def myloss(y_true, y_pred):
+        l1norm= l1norm_func(y_pred,y_true)
+        l2norm= l2norm_func(y_pred,y_true)
+        orthonormal= orthonormality_func(y_pred)
+        structpreserve=structurePreserve_func(y_pred,alpha_trans1[g])
+        return l1norm+l2norm+structpreserve+orthonormal
+    return myloss
+
+def l1norm_func(z,nt):
+    q1=0.002*(tf.reduce_sum(tf.abs(tf.subtract(z,nt)),axis=1))
+    return q1
+
+def l2norm_func(z,nt):
+    q2=0.02*(tf.sqrt(tf.reduce_sum(tf.square(z-nt))))
+    return q2
+
+def structurePreserve_func(z,ta):
+    tz=tf.transpose(z)
+    tz=tf.reshape(tz,(encoding_dim,batchSize))
+    taa=tf.transpose(ta)
+    taz=tf.matmul(tz,taa)
+    taz=tf.reshape(taz,(encoding_dim,batchSize))
+    q4=0.02*(tf.sqrt(tf.reduce_sum(tf.square(tz-taz))))
+    q4=tf.transpose(q4)
+    return q4
+
+def orthonormality_func(z):
+    z=[(z[i,:]/(tf.norm(z[i,:],2)))for i in range (batchSize)]
+    transz=tf.transpose(z)
+    q3=tf.tensordot(transz,z,axes=1)
+    I=tf.eye(encoding_dim)
+    q5=0.002*(tf.sqrt(tf.reduce_sum(tf.square(q3-I))))
+    return q5
+
+nev_trans,L,eig_val,eig_vec,dec_eigVal,W=eig_vec(x_train)
+encoder,encoding_dim,autoencoder=arch()
+encoder.load_weights('../../datasets/eyaleb/final/sdsc_eyalebfull.ckpt')
+ic= np.load('../../datasets/eyaleb/final/sdsc_eyalebicfull.npy') 
+z_test=encoder.predict(x_train)
+assignment = assign_func(z_test, ic)
+predictedlabels = np.argmax(assignment, axis=1)
+rectified_label, acc=rectify_label(predictedlabels, y)
+nmi=sklearn.metrics.normalized_mutual_info_score(y, predictedlabels)
+f1=sklearn.metrics.f1_score(y, rectified_label,average='micro')
+prec=sklearn.metrics.precision_score(y, rectified_label,average='weighted')
+print('on eyaleb full dataset: accuracy is, nmi is, f1 score is, precision is...',acc,nmi,f1,prec)
