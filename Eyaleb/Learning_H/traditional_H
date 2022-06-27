@@ -1,1 +1,91 @@
+import numpy as np
+import glob
+import tensorflow.compat.v1 as tf
+from sklearn.metrics.pairwise import euclidean_distances
+from scipy import linalg
+import sklearn
+from sklearn.cluster import KMeans
+from tensorflow.keras import backend as B
+from tensorflow.keras.layers import Input,Dense,Lambda,Layer
+dnet=tf.keras.applications.densenet.DenseNet201(include_top=False,weights="imagenet",input_tensor=None,input_shape=None,pooling=None)
+from tensorflow.keras.models import Model
+from sklearn.metrics import confusion_matrix
+from munkres import Munkres
+from sklearn.decomposition import PCA
+pca = PCA(n_components=784)
+k_cluster = 38
+batchSize=486
+import spams
+param = {'lambda1':0.2,'numThreads' : -1,'mode' : 1}
+from numpy import save
 
+
+def load_data():
+    train_set = []
+    y= []
+    for filename in glob.iglob('../../datasets/eyaleb/eyaleb_images/*.pgm'):
+        img = cv2.imread(filename, -1)
+        train_set.append(img)
+        parts=os.path.split(filename)[1]
+        parts=parts[5:7]
+        y.append(np.int32(parts))
+    y=np.array(y)
+    y=y-1
+    for i in range (len(y)):
+        if y[i]==38:
+            y[i]=13
+        else:
+            continue
+    train_set=np.array(train_set)
+    train_set=np.stack((train_set,)*3, axis=-1)
+    train_set = train_set.astype('float32') / 255.
+    train_set, y = shuffle(train_set, y, random_state=10)
+    print('got train set')
+    return train_set,y
+def extract_features(vtr,y):
+    pca.fit(vtr)
+    x=pca.transform(vtr)
+    for i in range(len(x)):
+        x[i]=x[i]/np.linalg.norm(x[i],2)
+    y=y[:len(y)-2] ##to make it divisible by batch size
+    x=x[:len(x)-2]
+    y=np.array(y)
+    y=y.reshape(len(y))
+    return x,y
+def struct_preserve(x_train,batchSize):
+  alpha_trans1=[]
+  for l in range (0,len(x_train),batchSize):
+    xtr=x_train[l:l+batchSize].T
+    alpha=np.zeros((xtr.shape[1],xtr.shape[1]))
+    for i in range (xtr.shape[1]):
+      x=xtr[:,i].reshape(784,1)
+      if i==0:
+        xf=xtr[:,i+1:].reshape(784,xtr.shape[1]-1)
+        alpha[0,0]=0
+        tmp = spams.lasso(x,D =xf ,return_reg_path = False,**param)
+        #print(tmp)
+        tmp=tmp.toarray()
+        #print(tmp.shape)
+        tmp=tmp.reshape(xtr.shape[1]-1)
+        alpha[1:,i] = tmp
+      else:  
+        dictionary= np.concatenate([xtr[:,:i],xtr[:,i+1:]],axis=1)
+        xf=dictionary.reshape(784,xtr.shape[1]-1)
+        tmp = spams.lasso(x,D = xf,return_reg_path = False,**param)
+        #print(tmp)
+        tmp=tmp.toarray()
+        tmp=tmp.reshape(xtr.shape[1]-1)
+        alpha[:i,i]=tmp[:i]
+        alpha[i,i]=0
+        alpha[i+1:,i]=tmp[i:]
+    alpha_trans1.append(alpha.T)
+  alpha_trans1=np.array(alpha_trans1)
+  alpha_trans1=alpha_trans1.astype('float32')
+  return alpha_trans1
+  
+train_set,y,batchSize=load_data()
+vtr=dnet.predict(train_set)
+vtr = vtr.reshape((len(vtr), np.prod(vtr.shape[1:])))
+x_train,y=extract_features(vtr,y)
+alpha_trans1=struct_preserve(x_train,batchSize)
+save('../../datasets/eyaleb/htraditional_eyaleb.npy',alpha_trans1)
