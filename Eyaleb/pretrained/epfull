@@ -13,11 +13,11 @@ from munkres import Munkres
 k_cluster = 38
 batchSize=486
 
-x_train=np.load('../../datasets/eyaleb/deyalebfromsenet.npy')
+x_train=np.load('../../datasets/eyaleb/d_eyaleb.npy')
 x_train=x_train.reshape(len(x_train),784)
-y=np.load('../.././datasets/eyaleb/leyalebfromsenet.npy')
+y=np.load('../.././datasets/eyaleb/l_eyaleb.npy')
 y=y.reshape(len(y),)
-alpha_trans1=np.load('../.././datasets/eyaleb/cknneyalebfromsenet.npy',allow_pickle=True)
+alpha_trans1=np.load('../.././datasets/eyaleb/h_eyaleb.npy',allow_pickle=True)
 alpha_trans1=np.asarray(alpha_trans1).astype('float32') 
 def eig_vec(x_train):
     nev_trans=[]
