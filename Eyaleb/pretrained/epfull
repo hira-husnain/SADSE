@@ -122,15 +122,12 @@ def asl():
         structpreserve=structurePreserve_func(y_pred,alpha_trans1[g])
         return l1norm+l2norm+structpreserve+orthonormal
     return myloss
-
 def l1norm_func(z,nt):
     q1=0.002*(tf.reduce_sum(tf.abs(tf.subtract(z,nt)),axis=1))
     return q1
-
 def l2norm_func(z,nt):
     q2=0.02*(tf.sqrt(tf.reduce_sum(tf.square(z-nt))))
-    return q2
-
+    return q2  
 def structurePreserve_func(z,ta):
     tz=tf.transpose(z)
     tz=tf.reshape(tz,(encoding_dim,batchSize))
@@ -140,7 +137,6 @@ def structurePreserve_func(z,ta):
     q4=0.02*(tf.sqrt(tf.reduce_sum(tf.square(tz-taz))))
     q4=tf.transpose(q4)
     return q4
-
 def orthonormality_func(z):
     z=[(z[i,:]/(tf.norm(z[i,:],2)))for i in range (batchSize)]
     transz=tf.transpose(z)
@@ -149,10 +145,12 @@ def orthonormality_func(z):
     q5=0.002*(tf.sqrt(tf.reduce_sum(tf.square(q3-I))))
     return q5
 
+
 nev_trans,L,eig_val,eig_vec,dec_eigVal,W=eig_vec(x_train)
 encoder,encoding_dim,autoencoder=arch()
-encoder.load_weights('../../datasets/eyaleb/final/sdsc_eyalebfull.ckpt')
-ic= np.load('../../datasets/eyaleb/final/sdsc_eyalebicfull.npy') 
+encoder.compile(tf.keras.optimizers.Adadelta(lr=1e-3, rho=0.95, decay=1e-4), loss=asl())
+encoder.load_weights('../../checkpoints/eyaleb/final/sdsc_eyalebfull.ckpt')
+ic= np.load('../../checkpoints/eyaleb/final/sdsc_eyalebicfull.npy') 
 z_test=encoder.predict(x_train)
 assignment = assign_func(z_test, ic)
 predictedlabels = np.argmax(assignment, axis=1)
