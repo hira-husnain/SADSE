@@ -1,6 +1,6 @@
 # SDSC: Structure Aware Deep Spectral Embedding
 
-Official implementation of our paper (https://scholar.google.com/scholar?hl=en&as_sdt=0%2C5&q=learning+a+structure+aware+deep+spectral+embedding&btnG=).
+Official implementation of our paper (https://arxiv.org/abs/2305.08215).
 1. pip  install munkres
 2. pip install spams
 
