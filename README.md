@@ -1,4 +1,4 @@
-# SDSC: Structure Aware Deep Spectral Embedding
+# SADSE: Learning Structure Aware Deep Spectral Embedding
 
 Official implementation of our paper (https://arxiv.org/abs/2305.08215).
 1. pip  install munkres
