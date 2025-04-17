@@ -1,6 +1,6 @@
 # SADSE: Learning Structure Aware Deep Spectral Embedding
 
-Official implementation of our paper (https://arxiv.org/abs/2305.08215).
+Official implementation of our paper (Yaseen, H., & Mahmood, A. (2023). Learning structure aware deep spectral embedding. IEEE Transactions on Image Processing, 32, 3939-3948.).
 1. pip  install munkres
 2. pip install spams
 
